@@ -197,9 +197,11 @@ echo -e "$current_password\n" | sudo -S systemctl disable waydroid-container.ser
 mkdir ~/Android_Waydroid &> /dev/null
 
 # waydroid kernel module
-echo -e "$current_password\n" | sudo -S tee -a  /etc/modules-load.d/waydroid.conf > /dev/null <<'EOF'
+if [ "$BINDER_MODULE_LOADED" -eq 1 ]; then
+	echo -e "$current_password\n" | sudo -S tee -a  /etc/modules-load.d/waydroid.conf > /dev/null <<'EOF'
 binder_linux
 EOF
+fi
 
 # waydroid start service
 echo -e "$current_password\n" | sudo -S tee -a  /usr/bin/waydroid-container-start > /dev/null <<'EOF'
