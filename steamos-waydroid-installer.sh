@@ -3,7 +3,7 @@
 clear
 
 echo SteamOS Waydroid Installer Script by ryanrudolf
-echo https://github.com/AncletoCEO/SteamOS-Waydroid-Installer
+echo https://github.com/ryanrudolf/SteamOS-Waydroid-Installer
 sleep 2
 
 kernel_version=$(uname -r)
@@ -110,13 +110,18 @@ else
 	exit
 fi
 
-# check for native binderfs support first (kernels 6.11+ may have it built-in)
+# check if the kernel already provides binder natively.
+# binder can be provided either as a built-in (CONFIG_ANDROID_BINDER_IPC=y,
+# e.g. neptune-616/6.16 kernels) or via a mounted binderfs.
 BINDER_MODULE_LOADED=0
+kernel_config=$(zcat /proc/config.gz 2>/dev/null || cat /boot/config-"$kernel_version" 2>/dev/null)
 if [ -e /dev/binderfs/binder-control ]; then
 	echo "Native binderfs detected! No kernel module needed."
+elif echo "$kernel_config" | grep -q "^CONFIG_ANDROID_BINDER_IPC=y"; then
+	echo "binder is compiled into this kernel (CONFIG_ANDROID_BINDER_IPC=y). No kernel module needed."
 else
-	# no native binderfs - build and install binder_linux via DKMS
-	echo "No native binderfs found. Building binder_linux kernel module via DKMS..."
+	# no native binder - build and install binder_linux via DKMS
+	echo "No native binder found. Building binder_linux kernel module via DKMS..."
 
 	# install kernel headers and build tools
 	echo -e "$current_password\n" | sudo -S pacman -S --needed --noconfirm $HEADER_PKG dkms base-devel
@@ -157,11 +162,14 @@ else
 	echo -e "$current_password\n" | sudo -S dkms autoinstall -k "$kernel_version"
 	echo -e "$current_password\n" | sudo -S depmod -a
 
-	# load the module and verify it actually loaded
+	# load the module and verify it actually loaded.
+	# if the module failed because binder is already built-in, that is fine
 	rm -rf "$BINDER_DKMS_DIR"
 	if echo -e "$current_password\n" | sudo -S modprobe binder_linux; then
 		echo "binder_linux DKMS module has been installed and loaded!"
 		BINDER_MODULE_LOADED=1
+	elif echo -e "$current_password\n" | sudo -S modprobe binder_linux 2>&1 | grep -q "Device or resource busy"; then
+		echo "binder is already provided by the running kernel. The DKMS module is not needed."
 	else
 		echo "Error loading binder_linux kernel module. Goodbye!"
 		echo -e "$current_password\n" | sudo -S steamos-readonly enable
@@ -203,8 +211,13 @@ EOF
 fi
 
 # waydroid start service
-echo -e "$current_password\n" | sudo -S tee -a  /usr/bin/waydroid-container-start > /dev/null <<'EOF'
+echo -e "$current_password\n" | sudo -S tee -a  /usr/bin/waydroid-container-start > /dev/null <<EOF
 #!/bin/bash
+# make sure binderfs is mounted (binder may be built into the kernel)
+if [ ! -e /dev/binderfs/binder-control ]; then
+	mkdir -p /dev/binderfs
+	mount -t binder binder /dev/binderfs 2> /dev/null
+fi
 systemctl start waydroid-container.service
 sleep 5
 ln -s /dev/binderfs/binder /dev/anbox-binder 2> /dev/null
