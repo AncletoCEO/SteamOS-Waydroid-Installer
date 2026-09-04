@@ -32,6 +32,10 @@ A shell script to easily install / uninstall Android ([via Waydroid](https://way
 <a href="https://youtu.be/06T-h-jPVx8?si=pTWAlmcYyk9fHa38"> <img src="https://github.com/ryanrudolfoba/SteamOS-Waydroid-Installer/blob/main/android.webp"/> </a>
 </p>
 
+# What's New (as of Sept 04 2026)
+1. **Universal kernel support** - the installer now auto-detects the SteamOS kernel family and builds the `binder_linux` module on-device via DKMS instead of shipping a pre-compiled binary. Works on any SteamOS kernel (neptune-61, neptune-611, neptune-616, neptune-618, and future variants). Kernels with native binderfs support skip module installation entirely.
+2. Binder module is automatically rebuilt on future kernel updates.
+
 # What's New (as of March 09 2024)
 1. Updated launcher to easily run APKs in Game Mode. [demo guide here](https://youtu.be/pkRtPHfa_EM?si=broimKF1menbRxGg)
 2. Fix minor typo in uninstall - this now removes the Waydroid application entries in the KDE menu.
@@ -101,8 +105,13 @@ Answer - This issue happens if Steam client cant be run because the script was c
 
 # A Note on SteamOS Updates
 When there is a SteamOS update the waydroid will be wiped. This is normal behavior due to how SteamOS applies updates. \
-Re-run the script again but if the SteamOS update contains a new kernel version the script will exit immediately. \
-Please file an issue report when this happens so I can compile a binder kernel module to match the SteamOS update.
+Re-run the script to reinstall Waydroid. \
+Unlike the older versions of this script, the binder_linux kernel module is now built on-device via **DKMS** instead of shipping a pre-compiled binary for a specific kernel. This means:
+- Works on **any SteamOS kernel version** (neptune-61, neptune-611, neptune-616, neptune-618, and future variants) with no action needed from the maintainer.
+- Kernel families that ship **native binderfs support** skip module installation entirely.
+- On kernel upgrades, the DKMS module is **automatically rebuilt** for the new kernel.
+
+**After a SteamOS kernel update, please reboot** (do not run the script mid-session) so the running kernel and the installed kernel headers are in sync before the DKMS module is built.
 
 # Geekbench Benchmark Result Between OLED and LCD on SteamOS Android Waydroid
 [Geekbench Result](https://youtu.be/56YGZsU5j74) - Feb 11 2024
