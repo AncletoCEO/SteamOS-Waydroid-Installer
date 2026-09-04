@@ -94,7 +94,15 @@ then
 	
 	# remove the kernel module and packages installed
 	echo -e $PASSWORD\n | sudo -S systemctl stop waydroid-container
-	echo -e $PASSWORD\n | sudo -S rm /lib/modules/$(uname -r)/binder_linux.ko.zst
+	KERNEL_VERSION=$(uname -r)
+	# remove binder_linux DKMS module if built for this kernel
+	echo -e $PASSWORD\n | sudo -S dkms remove binder/1 -k $KERNEL_VERSION 2>/dev/null
+	echo -e $PASSWORD\n | sudo -S rm -f /lib/modules/$KERNEL_VERSION/kernel/extra/binder_linux.ko*
+	# remove kernel headers if no other DKMS modules depend on them
+	if ! ls -d /var/lib/dkms/*/ &>/dev/null; then
+		echo -e $PASSWORD\n | sudo -S pacman -R --noconfirm dkms
+	fi
+	echo -e $PASSWORD\n | sudo -S depmod -a
 	echo -e $PASSWORD\n | sudo -S pacman -R --noconfirm libglibutil libgbinder python-gbinder waydroid wlroots dnsmasq lxc
 	
 	# delete the waydroid directories and config
@@ -103,6 +111,10 @@ then
 	# delete waydroid config and scripts
 	echo -e $PASSWORD\n | sudo -S rm /etc/sudoers.d/zzzzzzzz-waydroid /etc/modules-load.d/waydroid.conf /usr/bin/waydroid-fix-controllers \
 		/usr/bin/waydroid-container-stop /usr/bin/waydroid-container-start
+	
+	# remove binder_linux-dkms package and its source tree
+	echo -e $PASSWORD\n | sudo -S pacman -R --noconfirm binder_linux-dkms 2>/dev/null
+	echo -e $PASSWORD\n | sudo -S rm -rf /usr/src/binder*
 	
 	# delete cage binaries
 	echo -e $PASSWORD\n | sudo -S rm /usr/bin/cage /usr/bin/wlr-randr
