@@ -3,13 +3,10 @@
 clear
 
 echo SteamOS Waydroid Installer Script by ryanrudolf
-echo https://github.com/ryanrudolfoba/SteamOS-Waydroid-Installer
+echo https://github.com/AncletoCEO/SteamOS-Waydroid-Installer
 sleep 2
 
 kernel_version=$(uname -r)
-stable1=6.1.52-valve9-1-neptune-61
-preview1=6.1.52-valve14-1-neptune-61
-preview2=6.1.52-valve16-1-neptune-61
 
 # sanity check - are you running this in Desktop Mode or ssh / virtual tty session?
 xdpyinfo &> /dev/null
@@ -22,15 +19,40 @@ else
 	exit
 fi
 
-# check kernel version. exit immediately if not on the supported kernel
+# check if running on a SteamOS / Valve neptune kernel
 echo Checking if kernel is supported.
-if [ $kernel_version = $stable1 ] || [ $kernel_version = $preview1 ] || [ $kernel_version = $preview2 ]
-then
-	echo $kernel_version is supported. Proceed to next step.
-else
-	echo $kernel_version is NOT supported. Exiting immediately.
-	exit
-fi
+case "$kernel_version" in
+	*-neptune-61-*)
+		echo "$kernel_version is a neptune-61 kernel. Proceed to next step."
+		HEADER_PKG="linux-neptune-61-headers"
+		;;
+	*-neptune-611-*)
+		echo "$kernel_version is a neptune-611 kernel. Proceed to next step."
+		HEADER_PKG="linux-neptune-611-headers"
+		;;
+	*-neptune-616-*)
+		echo "$kernel_version is a neptune-616 kernel. Proceed to next step."
+		HEADER_PKG="linux-neptune-616-headers"
+		;;
+	*-neptune-618-*)
+		echo "$kernel_version is a neptune-618 kernel. Proceed to next step."
+		HEADER_PKG="linux-neptune-618-headers"
+		;;
+	*-neptune-*)
+		echo "$kernel_version is an unrecognized neptune kernel variant."
+		echo "Attempting to detect header package automatically..."
+		HEADER_PKG=$(pacman -Ss neptune-headers 2>/dev/null | grep -oP 'linux-\S+-headers' | head -1)
+		if [ -z "$HEADER_PKG" ]; then
+			echo "Could not auto-detect kernel headers for $kernel_version. Exiting."
+			exit 1
+		fi
+		echo "Detected header package: $HEADER_PKG"
+		;;
+	*)
+		echo "$kernel_version is NOT a supported SteamOS neptune kernel. Exiting."
+		exit 1
+		;;
+esac
 
 # check if sudo password is already set
 if [ "$(passwd --status $(whoami) | tr -s " " | cut -d " " -f 2)" == "P" ]
