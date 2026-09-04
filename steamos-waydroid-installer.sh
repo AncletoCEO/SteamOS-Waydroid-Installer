@@ -110,18 +110,64 @@ else
 	exit
 fi
 
-# lets install binder
-echo -e "$current_password\n" | sudo -S cp binder/$kernel_version/binder_linux.ko.zst /lib/modules/$kernel_version && sudo depmod -a && sudo modprobe binder_linux
-
-if [ $? -eq 0 ]
-then
-	echo binder kernel module has been installed!
+# check for native binderfs support first (kernels 6.11+ may have it built-in)
+BINDER_MODULE_LOADED=0
+if [ -e /dev/binderfs/binder-control ]; then
+	echo "Native binderfs detected! No kernel module needed."
 else
-	echo Error installing binder kernel module. Goodbye!
- 	# cleanup remove binder kernel module
-	echo -e "$current_password\n" | sudo -S rm /lib/modules/$kernel_version/binder_linux.ko.zst
-	echo -e "$current_password\n" | sudo -S steamos-readonly enable
-	exit
+	# no native binderfs - build and install binder_linux via DKMS
+	echo "No native binderfs found. Building binder_linux kernel module via DKMS..."
+
+	# install kernel headers and build tools
+	echo -e "$current_password\n" | sudo -S pacman -S --needed --noconfirm $HEADER_PKG dkms base-devel
+
+	if [ $? -ne 0 ]; then
+		echo "Error installing kernel headers and DKMS. Goodbye!"
+		echo -e "$current_password\n" | sudo -S steamos-readonly enable
+		exit 1
+	fi
+
+	# clone and build binder_linux-dkms from AUR
+	BINDER_DKMS_DIR=$(mktemp -d)
+	cd "$BINDER_DKMS_DIR"
+	git clone https://aur.archlinux.org/binder_linux-dkms.git
+	cd binder_linux-dkms
+
+	# build the package (as regular user via makepkg)
+	makepkg -f --noconfirm
+
+	if [ $? -ne 0 ]; then
+		echo "Error building binder_linux-dkms package. Goodbye!"
+		echo -e "$current_password\n" | sudo -S steamos-readonly enable
+		rm -rf "$BINDER_DKMS_DIR"
+		exit 1
+	fi
+
+	# install the built package
+	echo -e "$current_password\n" | sudo -S pacman -U --noconfirm ./binder_linux-dkms-*.pkg.tar.zst
+
+	if [ $? -ne 0 ]; then
+		echo "Error installing binder_linux-dkms package. Goodbye!"
+		echo -e "$current_password\n" | sudo -S steamos-readonly enable
+		rm -rf "$BINDER_DKMS_DIR"
+		exit 1
+	fi
+
+	# build module for running kernel
+	echo -e "$current_password\n" | sudo -S dkms autoinstall -k "$kernel_version"
+	echo -e "$current_password\n" | sudo -S depmod -a
+	echo -e "$current_password\n" | sudo -S modprobe binder_linux
+
+	rm -rf "$BINDER_DKMS_DIR"
+
+	if [ $? -eq 0 ]; then
+		echo "binder_linux DKMS module has been installed!"
+		BINDER_MODULE_LOADED=1
+	else
+		echo "Error loading binder_linux kernel module. Goodbye!"
+		echo -e "$current_password\n" | sudo -S steamos-readonly enable
+		exit 1
+	fi
 fi
 
 # ok lets install waydroid and cage
@@ -134,8 +180,12 @@ then
 	echo waydroid and cage has been installed!
 else
 	echo Error installing waydroid and cage. Goodbye!
- 	# cleanup remove binder kernel module
- 	echo -e "$current_password\n" | sudo -S rm /lib/modules/$kernel_version/binder_linux.ko.zst
+ 	# cleanup remove binder kernel module if installed via DKMS
+	if [ "$BINDER_MODULE_LOADED" -eq 1 ]; then
+		echo -e "$current_password\n" | sudo -S dkms remove binder/1 -k "$kernel_version" 2>/dev/null
+		echo -e "$current_password\n" | sudo -S rm -f /lib/modules/"$kernel_version"/kernel/extra/binder_linux.ko*
+		echo -e "$current_password\n" | sudo -S depmod -a
+	fi
 	echo -e "$current_password\n" | sudo -S steamos-readonly enable
 	exit
 fi
@@ -215,7 +265,9 @@ fi
 EOF
 
 # lets enable the binder module so we can start waydroid right away
-echo -e "$current_password\n" | sudo -S modprobe binder_linux
+if [ "$BINDER_MODULE_LOADED" -eq 1 ]; then
+	echo -e "$current_password\n" | sudo -S modprobe binder_linux
+fi
 
 # custom configs done. lets move them to the correct location
 cp $PWD/extras/Waydroid-Toolbox.sh ~/Android_Waydroid
@@ -265,8 +317,12 @@ else
 	else
 		echo Waydroid did not initialize correctly. Performing cleanup!
      		
-		# remove binder kernel module
-		echo -e "$current_password\n" | sudo -S rm /lib/modules/$kernel_version/binder_linux.ko.zst
+		# remove binder kernel module if installed via DKMS
+		if [ "$BINDER_MODULE_LOADED" -eq 1 ]; then
+			echo -e "$current_password\n" | sudo -S dkms remove binder/1 -k "$kernel_version" 2>/dev/null
+			echo -e "$current_password\n" | sudo -S rm -f /lib/modules/"$kernel_version"/kernel/extra/binder_linux.ko*
+			echo -e "$current_password\n" | sudo -S depmod -a
+		fi
 
 		# remove installed packages
 		echo -e "$current_password\n" | sudo -S pacman -R --noconfirm libglibutil libgbinder python-gbinder waydroid wlroots dnsmasq lxc
