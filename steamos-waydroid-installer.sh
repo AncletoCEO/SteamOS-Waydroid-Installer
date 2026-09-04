@@ -133,35 +133,34 @@ else
 	git clone https://aur.archlinux.org/binder_linux-dkms.git
 	cd binder_linux-dkms
 
-	# build the package (as regular user via makepkg)
-	makepkg -f --noconfirm
-
-	if [ $? -ne 0 ]; then
+	# build the package (as the current non-root user via makepkg, sync deps)
+	if makepkg -f -s --noconfirm; then
+		echo "binder_linux-dkms package built successfully."
+	else
 		echo "Error building binder_linux-dkms package. Goodbye!"
+		cd / && rm -rf "$BINDER_DKMS_DIR"
 		echo -e "$current_password\n" | sudo -S steamos-readonly enable
-		rm -rf "$BINDER_DKMS_DIR"
 		exit 1
 	fi
 
 	# install the built package
-	echo -e "$current_password\n" | sudo -S pacman -U --noconfirm ./binder_linux-dkms-*.pkg.tar.zst
-
-	if [ $? -ne 0 ]; then
+	if echo -e "$current_password\n" | sudo -S pacman -U --noconfirm ./binder_linux-dkms-*.pkg.tar.zst; then
+		echo "binder_linux-dkms package installed successfully."
+	else
 		echo "Error installing binder_linux-dkms package. Goodbye!"
+		cd / && rm -rf "$BINDER_DKMS_DIR"
 		echo -e "$current_password\n" | sudo -S steamos-readonly enable
-		rm -rf "$BINDER_DKMS_DIR"
 		exit 1
 	fi
 
 	# build module for running kernel
 	echo -e "$current_password\n" | sudo -S dkms autoinstall -k "$kernel_version"
 	echo -e "$current_password\n" | sudo -S depmod -a
-	echo -e "$current_password\n" | sudo -S modprobe binder_linux
 
+	# load the module and verify it actually loaded
 	rm -rf "$BINDER_DKMS_DIR"
-
-	if [ $? -eq 0 ]; then
-		echo "binder_linux DKMS module has been installed!"
+	if echo -e "$current_password\n" | sudo -S modprobe binder_linux; then
+		echo "binder_linux DKMS module has been installed and loaded!"
 		BINDER_MODULE_LOADED=1
 	else
 		echo "Error loading binder_linux kernel module. Goodbye!"
